@@ -1,0 +1,49 @@
+Highlighted 
+
+function onOpen() {
+  DocumentApp.getUi()
+    .createMenu("🖍️ Custom Tools")
+    .addItem("Highlight Bold Text (Green)", "highlightBoldTextInGreen")
+    .addToUi();
+}
+
+function highlightBoldTextInGreen() {
+  const body = DocumentApp.getActiveDocument().getBody();
+  highlightBoldInElement(body);
+}
+
+function highlightBoldInElement(element) {
+  const type = element.getType();
+
+  if (type === DocumentApp.ElementType.TEXT) {
+    const text = element.asText();
+    const length = text.getText().length;
+
+    let start = -1;
+    for (let j = 0; j < length; j++) {
+      const isBold = text.isBold(j);
+      if (isBold && start === -1) {
+        start = j;
+      } else if (!isBold && start !== -1) {
+        // FIXED HERE: use j - 1
+        text.setBackgroundColor(start, j - 1, "#00FF00"); // Green
+        start = -1;
+      }
+    }
+
+    // If bold text ends at the end of the line
+    if (start !== -1) {
+      text.setBackgroundColor(start, length - 1, "#00FF00");
+    }
+
+    return;
+  }
+
+  if (typeof element.getNumChildren === "function") {
+    const numChildren = element.getNumChildren();
+    for (let i = 0; i < numChildren; i++) {
+      const child = element.getChild(i);
+      highlightBoldInElement(child);
+    }
+  }
+}

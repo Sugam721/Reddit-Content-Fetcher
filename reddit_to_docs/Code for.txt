@@ -1,0 +1,323 @@
+function onOpen() {
+  DocumentApp.getUi()
+    .createMenu("🖍️ Custom Tools")
+    .addItem("Highlight Banned Words (Green)", "highlightBannedWords")
+    .addItem("Highlight Numbers (Green)", "highlightNumbers")
+    .addItem("Highlight Pre-Bolded Text (Green)", "highlightPreBoldedText")
+    .addItem("Highlight All (Words + Numbers + Pre-Bold)", "highlightAll")
+    .addItem("Highlight Interesting Sentences Per Story", "highlightInterestingSentencePerStory")
+    .addToUi();
+}
+
+// ✅ Highlight banned words (bold + green), whole words only, skip story titles
+function highlightBannedWords() {
+  const bannedWords = [
+    "fuck", "fucking", "fuck off", "having sex", "sexual", "masturbate", "jerk off", "jack off", "fap",
+    "fingering", "going down on him", "going down on her", "eating", "oral sex", "blow job", "hand job",
+    "ejaculate", "ejaculated", "came", "cummed", "orgasm", "finished", "porn", "pornography", "porn star",
+    "bdsm", "milf", "threesome", "foursome", "vibrator", "sex toy", "stripper", "brothel", "prostitute",
+    "escort", "sex worker", "swingers", "swinger’s club", "swing", "penis", "dick", "cock", "shlong",
+    "balls", "scrotum", "vagina", "pussy", "cunt", "ass", "asshole", "anus", "anal", "erection", "hard",
+    "shit", "piece of shit", "piece of dick", "piece of ass", "bitch", "whore", "retard", "goddam",
+    "drugs", "cocaine", "marijuana", "heroin", "rape", "molest", "sexual abuse", "sexual assault",
+    "sexual harassment", "sodomy", "incest", "suicide", "kill", "murder", "grope", "traffic", "smuggle"
+  ];
+
+  const body = DocumentApp.getActiveDocument().getBody();
+  highlightWordsInElement(body, bannedWords);
+}
+
+function highlightWordsInElement(element, wordList) {
+  const type = element.getType();
+
+  if (type === DocumentApp.ElementType.TEXT) {
+    const textElement = element.asText();
+    const fullText = textElement.getText();
+
+    // Skip story title lines like "Story 1"
+    if (/^story\s*\d+/i.test(fullText.trim())) {
+      return; // skip processing
+    }
+
+    for (const bannedWord of wordList) {
+      const escapedWord = bannedWord.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+
+      // Check if bannedWord contains spaces
+      let regex;
+      if (bannedWord.includes(' ')) {
+        // Match phrase with start or non-word char before and end or non-word char after
+        regex = new RegExp(`(^|[^\\w])${escapedWord}([^\\w]|$)`, "gi");
+      } else {
+        // Single word - use word boundaries
+        regex = new RegExp(`\\b${escapedWord}\\b`, "gi");
+      }
+
+      let match;
+      while ((match = regex.exec(fullText)) !== null) {
+        // Calculate actual start index (adjust for group before the phrase)
+        const start = match.index + (match[1] ? match[1].length : 0);
+        const end = start + bannedWord.length - 1;
+
+        textElement.setBold(start, end, true);
+        textElement.setBackgroundColor(start, end, "#00FF00");
+      }
+    }
+    return;
+  }
+
+  if (typeof element.getNumChildren === "function") {
+    const count = element.getNumChildren();
+    for (let i = 0; i < count; i++) {
+      highlightWordsInElement(element.getChild(i), wordList);
+    }
+  }
+}
+
+
+// ✅ Highlight numbers (bold + green), skip story titles
+function highlightNumbers() {
+  const body = DocumentApp.getActiveDocument().getBody();
+  highlightNumbersInElement(body);
+}
+
+function highlightNumbersInElement(element) {
+  const type = element.getType();
+
+  if (type === DocumentApp.ElementType.TEXT) {
+    const textElement = element.asText();
+    const fullText = textElement.getText();
+
+    // Skip story title lines like "Story 1"
+    if (/^story\s*\d+/i.test(fullText.trim())) {
+      return; // skip processing
+    }
+
+    const numberRegex = /\d+/g;
+    let match;
+
+    while ((match = numberRegex.exec(fullText)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length - 1;
+
+      textElement.setBold(start, end, true);
+      textElement.setBackgroundColor(start, end, "#00FF00");
+    }
+
+    return;
+  }
+
+  if (typeof element.getNumChildren === "function") {
+    const count = element.getNumChildren();
+    for (let i = 0; i < count; i++) {
+      highlightNumbersInElement(element.getChild(i));
+    }
+  }
+}
+
+// ✅ Highlight pre-bolded characters (green only), skip story titles
+function highlightPreBoldedText() {
+  const body = DocumentApp.getActiveDocument().getBody();
+  highlightBoldedCharactersInElement(body);
+}
+
+function highlightBoldedCharactersInElement(element) {
+  const type = element.getType();
+
+  if (type === DocumentApp.ElementType.TEXT) {
+    const textElement = element.asText();
+    const fullText = textElement.getText();
+
+    // Skip story titles like "Story 1"
+    if (/^story\s*\d+/i.test(fullText.trim())) {
+      return; // skip processing
+    }
+
+    const length = fullText.length;
+    let start = -1;
+
+    for (let i = 0; i < length; i++) {
+      if (textElement.isBold(i)) {
+        if (start === -1) start = i; // start of bold range
+      } else {
+        if (start !== -1) {
+          const end = i - 1;
+
+          // Check if partial bold is inside a larger word
+          const charBefore = start > 0 ? fullText.charAt(start - 1) : null;
+          const charAfter = i < length ? fullText.charAt(i) : null;
+
+          const isInsideWord = (charBefore && /\w/.test(charBefore)) || (charAfter && /\w/.test(charAfter));
+
+          if (!isInsideWord) {
+            textElement.setBackgroundColor(start, end, "#00FF00");
+          }
+          // else skip highlight, partial bold inside word
+
+          start = -1;
+        }
+      }
+    }
+
+    // Handle bold at end of text
+    if (start !== -1) {
+      const end = length - 1;
+      const charBefore = start > 0 ? fullText.charAt(start - 1) : null;
+      const charAfter = null; // no char after end
+
+      const isInsideWord = (charBefore && /\w/.test(charBefore)) || false;
+
+      if (!isInsideWord) {
+        textElement.setBackgroundColor(start, end, "#00FF00");
+      }
+    }
+
+    return;
+  }
+
+  if (typeof element.getNumChildren === "function") {
+    const count = element.getNumChildren();
+    for (let i = 0; i < count; i++) {
+      highlightBoldedCharactersInElement(element.getChild(i));
+    }
+  }
+}
+
+
+function highlightInterestingSentencePerStory() {
+  const keywords = [
+    "murder", "death", "kill", "secret", "love", "arrest", "betrayal", "twist", "affair",
+    "scam", "jail", "money", "explosion", "escape", "shocking", "fight", "cheat", "stabbed",
+    "reveal", "revealed", "confessed", "haunted", "drug", "shoot", "crime"
+  ];
+
+  const body = DocumentApp.getActiveDocument().getBody();
+  const paragraphs = body.getParagraphs();
+
+  let currentStoryParas = [];
+  let storyStarted = false;
+
+  function splitIntoSentences(text) {
+    return text.match(/[^\.!\?]+[\.!\?]+/g) || [text];
+  }
+
+  function highlightTextInParagraph(paragraph, sentence) {
+    const textElement = paragraph.editAsText();
+    const fullText = textElement.getText();
+    const startIndex = fullText.indexOf(sentence);
+    if (startIndex !== -1) {
+      const endIndex = startIndex + sentence.length - 1;
+      textElement.setBackgroundColor(startIndex, endIndex, "#00FF00");
+      return true;
+    }
+    return false;
+  }
+
+  function findPreBoldedRange(paragraph) {
+    const textElement = paragraph.asText();
+    const length = textElement.getText().length;
+    for (let i = 0; i < length; i++) {
+      if (textElement.isBold(i)) {
+        // find continuous bold range
+        let start = i;
+        while (i < length && textElement.isBold(i)) i++;
+        let end = i - 1;
+        return {start, end};
+      }
+    }
+    return null;
+  }
+
+  function highlightBestSentenceInStory(paragraphs) {
+    let bestSentence = null;
+    let bestScore = -1;
+    let bestPara = null;
+    let lastSentence = null;
+    let lastPara = null;
+
+    for (let para of paragraphs) {
+      const text = para.getText();
+      if (!text.trim()) continue;
+
+      // Skip story title lines from consideration
+      if (/^story\s*\d+/i.test(text.trim())) continue;
+
+      const sentences = splitIntoSentences(text);
+      if (sentences.length > 0) {
+        lastSentence = sentences[sentences.length - 1];
+        lastPara = para;
+      }
+
+      for (let sentence of sentences) {
+        const lowerSentence = sentence.toLowerCase();
+        let score = 0;
+        for (const kw of keywords) {
+          if (lowerSentence.includes(kw)) score++;
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestSentence = sentence;
+          bestPara = para;
+        }
+      }
+    }
+
+    // Priority 1: Highlight best keyword sentence
+    if (bestSentence && bestPara && bestScore > 0) {
+      highlightTextInParagraph(bestPara, bestSentence);
+      return;
+    }
+
+    // Priority 2: Highlight last sentence if no keywords found
+    if (lastSentence && lastPara) {
+      highlightTextInParagraph(lastPara, lastSentence);
+      return;
+    }
+
+    // Priority 3: Highlight pre-bolded section anywhere in the story
+    for (let para of paragraphs) {
+      const text = para.getText().trim();
+      if (/^story\s*\d+/i.test(text)) continue; // skip story titles
+
+      const range = findPreBoldedRange(para);
+      if (range) {
+        const textElement = para.editAsText();
+        textElement.setBackgroundColor(range.start, range.end, "#00FF00");
+        return;
+      }
+    }
+  }
+
+  for (let para of paragraphs) {
+    const text = para.getText().trim();
+
+    if (/^story\s*\d+/i.test(text)) {
+      // Highlight previous story best sentence before moving on
+      if (storyStarted && currentStoryParas.length > 0) {
+        highlightBestSentenceInStory(currentStoryParas);
+      }
+      // Start new story
+      currentStoryParas = [];
+      storyStarted = true;
+      continue;
+    }
+
+    if (storyStarted) {
+      currentStoryParas.push(para);
+    }
+  }
+
+  // Highlight last story
+  if (storyStarted && currentStoryParas.length > 0) {
+    highlightBestSentenceInStory(currentStoryParas);
+  }
+}
+
+// ✅ Run everything at once
+function highlightAll() {
+  highlightBannedWords();
+  highlightNumbers();
+  highlightPreBoldedText();
+  highlightInterestingSentencePerStory();
+}
+
